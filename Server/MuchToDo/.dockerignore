@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+bin/
+tmp/
+coverage/
+*.test
+*.out
+Dockerfile
+docker-compose.yml
+docker-compose.yaml
+kubernetes/
+scripts/
+evidence/
+README.md
