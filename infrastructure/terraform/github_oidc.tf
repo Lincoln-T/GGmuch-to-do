@@ -117,3 +117,44 @@ resource "aws_iam_role_policy_attachment" "github_actions_deploy" {
   role       = aws_iam_role.github_actions_deploy.name
   policy_arn = aws_iam_policy.github_actions_deploy.arn
 }
+
+resource "aws_iam_policy" "github_actions_artifact_deploy" {
+  name        = "${local.name_prefix}-github-actions-artifact-deploy-policy"
+  description = "Allow GitHub Actions to upload backend deployment artifacts"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowListDeploymentArtifactsBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.deployment_artifacts.arn
+        ]
+      },
+      {
+        Sid    = "AllowWriteDeploymentArtifacts"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.deployment_artifacts.arn}/backend/*"
+        ]
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-actions-artifact-deploy-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_artifact_deploy" {
+  role       = aws_iam_role.github_actions_deploy.name
+  policy_arn = aws_iam_policy.github_actions_artifact_deploy.arn
+}

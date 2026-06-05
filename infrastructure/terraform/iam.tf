@@ -95,3 +95,33 @@ resource "aws_iam_role_policy_attachment" "backend_ssm_managed_instance_core" {
   role       = aws_iam_role.backend_ec2.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
+
+resource "aws_iam_policy" "backend_artifact_read" {
+  name        = "${local.name_prefix}-backend-artifact-read-policy"
+  description = "Allow backend EC2 instances to download deployment artifacts from S3"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowReadBackendArtifacts"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.deployment_artifacts.arn}/backend/*"
+        ]
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-backend-artifact-read-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "backend_artifact_read" {
+  role       = aws_iam_role.backend_ec2.name
+  policy_arn = aws_iam_policy.backend_artifact_read.arn
+}
