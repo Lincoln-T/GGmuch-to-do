@@ -9,6 +9,8 @@ on:
       - "Server/**"
       - ".github/workflows/deploy.yml"
 
+  workflow_dispatch:
+
 permissions:
   id-token: write
   contents: read

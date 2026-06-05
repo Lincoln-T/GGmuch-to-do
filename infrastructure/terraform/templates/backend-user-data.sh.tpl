@@ -5,11 +5,24 @@ APP_DIR="/opt/muchtodo"
 SERVICE_NAME="muchtodo-backend"
 
 apt-get update -y
-apt-get install -y ca-certificates curl unzip git wget awscli
+apt-get install -y ca-certificates curl unzip git wget awscli snapd
 
 # Install Amazon CloudWatch Agent
 wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -O /tmp/amazon-cloudwatch-agent.deb
 dpkg -i /tmp/amazon-cloudwatch-agent.deb
+
+# Ensure AWS Systems Manager agent is installed and running
+if ! command -v snap >/dev/null 2>&1; then
+  apt-get install -y snapd
+fi
+
+if ! systemctl list-unit-files | grep -q snap.amazon-ssm-agent.amazon-ssm-agent.service; then
+  snap install amazon-ssm-agent --classic || true
+fi
+
+systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+
 
 mkdir -p "$${APP_DIR}"
 
@@ -62,6 +75,15 @@ CWEOF
   -m ec2 \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
   -s
+
+
+cat > /usr/local/bin/muchtodo-backend <<'PLACEHOLDEREOF'
+#!/usr/bin/env bash
+echo "MuchToDo backend binary has not been deployed yet."
+exit 1
+PLACEHOLDEREOF
+
+chmod +x /usr/local/bin/muchtodo-backend
 
 cat > /etc/systemd/system/$${SERVICE_NAME}.service <<SERVICEEOF
 [Unit]
