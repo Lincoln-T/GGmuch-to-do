@@ -28,14 +28,32 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-variable "mongo_uri" {
-  description = "MongoDB Atlas connection string"
+variable "mongo_uri_parameter_name" {
+  description = "SSM Parameter Store name for the MongoDB connection URI"
   type        = string
-  sensitive   = true
+  default     = "/muchtodo-month3/prod/mongo_uri"
 }
 
-variable "jwt_secret_key" {
-  description = "JWT secret key for backend API"
+variable "jwt_secret_parameter_name" {
+  description = "SSM Parameter Store name for the backend JWT secret"
   type        = string
-  sensitive   = true
+  default     = "/muchtodo-month3/prod/jwt_secret_key"
+}
+
+variable "github_owner" {
+  description = "GitHub repository owner"
+  type        = string
+  default     = "Lincoln-T"
+}
+
+variable "github_repo" {
+  description = "GitHub repository name"
+  type        = string
+  default     = "GGmuch-to-do"
+}
+
+variable "github_branch" {
+  description = "GitHub branch allowed to assume the deployment role"
+  type        = string
+  default     = "month-three-assessment"
 }

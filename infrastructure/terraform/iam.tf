@@ -59,3 +59,39 @@ resource "aws_iam_instance_profile" "backend_ec2" {
     Name = "${local.name_prefix}-backend-ec2-profile"
   })
 }
+
+resource "aws_iam_policy" "backend_ssm_parameters" {
+  name        = "${local.name_prefix}-backend-ssm-parameters-policy"
+  description = "Allow backend EC2 instances to read required application secrets from SSM Parameter Store"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowReadBackendParameters"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.mongo_uri_parameter_name}",
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.jwt_secret_parameter_name}"
+        ]
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-backend-ssm-parameters-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "backend_ssm_parameters" {
+  role       = aws_iam_role.backend_ec2.name
+  policy_arn = aws_iam_policy.backend_ssm_parameters.arn
+}
+
+resource "aws_iam_role_policy_attachment" "backend_ssm_managed_instance_core" {
+  role       = aws_iam_role.backend_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
