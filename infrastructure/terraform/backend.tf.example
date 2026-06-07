@@ -1,9 +1,0 @@
-terraform {
-  backend "s3" {
-    bucket         = "REPLACE_WITH_STATE_BUCKET_NAME"
-    key            = "month3/prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "muchtodo-month3-terraform-locks"
-    encrypt        = true
-  }
-}
