@@ -18,7 +18,7 @@ resource "aws_lb_target_group" "backend" {
 
   health_check {
     enabled             = true
-    path                = "/"
+    path                = "/health"
     matcher             = "200-399"
     interval            = 30
     timeout             = 5
@@ -60,6 +60,7 @@ resource "aws_launch_template" "backend" {
     redis_addr                = "${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
     cloudwatch_log_group      = aws_cloudwatch_log_group.backend.name
     aws_region                = var.aws_region
+    backend_image_uri         = "${aws_ecr_repository.backend.repository_url}:latest"
   }))
 
   tag_specifications {

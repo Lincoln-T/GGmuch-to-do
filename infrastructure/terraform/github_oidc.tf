@@ -158,3 +158,45 @@ resource "aws_iam_role_policy_attachment" "github_actions_artifact_deploy" {
   role       = aws_iam_role.github_actions_deploy.name
   policy_arn = aws_iam_policy.github_actions_artifact_deploy.arn
 }
+
+resource "aws_iam_policy" "github_actions_ecr_push" {
+  name        = "${local.name_prefix}-github-actions-ecr-push-policy"
+  description = "Allow GitHub Actions to build and push backend Docker images to ECR"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEcrAuth"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowPushBackendImage"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:CompleteLayerUpload",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart",
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages"
+        ]
+        Resource = aws_ecr_repository.backend.arn
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-actions-ecr-push-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_ecr_push" {
+  role       = aws_iam_role.github_actions_deploy.name
+  policy_arn = aws_iam_policy.github_actions_ecr_push.arn
+}

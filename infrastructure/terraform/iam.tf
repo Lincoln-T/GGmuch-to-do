@@ -125,3 +125,41 @@ resource "aws_iam_role_policy_attachment" "backend_artifact_read" {
   role       = aws_iam_role.backend_ec2.name
   policy_arn = aws_iam_policy.backend_artifact_read.arn
 }
+
+resource "aws_iam_policy" "backend_ecr_read" {
+  name        = "${local.name_prefix}-backend-ecr-read-policy"
+  description = "Allow backend EC2 instances to pull backend Docker images from ECR"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEcrAuth"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowBackendImagePull"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
+        ]
+        Resource = aws_ecr_repository.backend.arn
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-backend-ecr-read-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "backend_ecr_read" {
+  role       = aws_iam_role.backend_ec2.name
+  policy_arn = aws_iam_policy.backend_ecr_read.arn
+}

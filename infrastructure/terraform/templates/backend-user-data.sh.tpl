@@ -3,9 +3,14 @@ set -euo pipefail
 
 APP_DIR="/opt/muchtodo"
 SERVICE_NAME="muchtodo-backend"
+CONTAINER_NAME="muchtodo-backend"
+BACKEND_IMAGE_URI="${backend_image_uri}"
 
 apt-get update -y
-apt-get install -y ca-certificates curl unzip git wget awscli snapd
+apt-get install -y ca-certificates curl unzip git wget awscli snapd docker.io
+
+systemctl enable docker
+systemctl start docker
 
 # Install Amazon CloudWatch Agent
 wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -O /tmp/amazon-cloudwatch-agent.deb
@@ -22,7 +27,6 @@ fi
 
 systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service || true
 systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service || true
-
 
 mkdir -p "$${APP_DIR}"
 
@@ -76,30 +80,48 @@ CWEOF
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
   -s
 
-
-cat > /usr/local/bin/muchtodo-backend <<'PLACEHOLDEREOF'
+cat > /usr/local/bin/deploy-muchtodo-container <<'DEPLOYEOF'
 #!/usr/bin/env bash
-echo "MuchToDo backend binary has not been deployed yet."
-exit 1
-PLACEHOLDEREOF
+set -euo pipefail
 
-chmod +x /usr/local/bin/muchtodo-backend
+AWS_REGION="${aws_region}"
+CONTAINER_NAME="muchtodo-backend"
+IMAGE_URI="${backend_image_uri}"
+APP_ENV_FILE="/opt/muchtodo/.env"
+LOG_FILE="/var/log/muchtodo-backend.log"
+
+aws ecr get-login-password --region "$${AWS_REGION}" | \
+  docker login --username AWS --password-stdin "$${IMAGE_URI%/*}"
+
+docker pull "$${IMAGE_URI}"
+
+docker rm -f "$${CONTAINER_NAME}" 2>/dev/null || true
+
+docker run -d \
+  --name "$${CONTAINER_NAME}" \
+  --restart unless-stopped \
+  --env-file "$${APP_ENV_FILE}" \
+  -p ${backend_port}:${backend_port} \
+  "$${IMAGE_URI}"
+
+docker logs -f "$${CONTAINER_NAME}" >> "$${LOG_FILE}" 2>&1 &
+DEPLOYEOF
+
+chmod +x /usr/local/bin/deploy-muchtodo-container
 
 cat > /etc/systemd/system/$${SERVICE_NAME}.service <<SERVICEEOF
 [Unit]
-Description=MuchToDo Backend API
-After=network-online.target
+Description=MuchToDo Backend API Docker Container
+After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
-Type=simple
-WorkingDirectory=$${APP_DIR}
-EnvironmentFile=$${APP_DIR}/.env
-ExecStart=/usr/local/bin/muchtodo-backend
-Restart=always
-RestartSec=5
-StandardOutput=append:/var/log/muchtodo-backend.log
-StandardError=append:/var/log/muchtodo-backend.log
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/deploy-muchtodo-container
+ExecStop=/usr/bin/docker rm -f $${CONTAINER_NAME}
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
@@ -107,5 +129,6 @@ SERVICEEOF
 
 systemctl daemon-reload
 systemctl enable $${SERVICE_NAME}
+systemctl start $${SERVICE_NAME}
 
-echo "Backend instance bootstrap completed. Application binary will be deployed by CI/CD." | tee -a /var/log/muchtodo-backend.log
+echo "Backend instance bootstrap completed. Docker image deployment service started." | tee -a /var/log/muchtodo-backend.log

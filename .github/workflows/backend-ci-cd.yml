@@ -1,30 +1,27 @@
-name: Deploy Application
+name: Backend CI/CD
 
 on:
   push:
     branches:
       - month-three-assessment
     paths:
-      - "Client/**"
       - "Server/**"
-      - ".github/workflows/deploy.yml"
-
+      - ".github/workflows/backend-ci-cd.yml"
   workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
+  security-events: write
 
 env:
   AWS_REGION: us-east-1
-  FRONTEND_DIR: Client
   BACKEND_DIR: Server/MuchToDo
-  BACKEND_BINARY_NAME: muchtodo-backend
-  VITE_API_BASE_URL: /api
+  IMAGE_TAG: latest
 
 jobs:
-  deploy:
-    name: Build and Deploy Full Stack App
+  backend:
+    name: Test, build, scan, push, and deploy backend
     runs-on: ubuntu-latest
 
     steps:
@@ -37,51 +34,48 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: Client/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: npm run build
-        env:
-          VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
-
-      - name: Upload frontend to S3
-        run: |
-          aws s3 sync Client/dist "s3://${{ vars.FRONTEND_BUCKET_NAME }}" --delete
-
-      - name: Invalidate CloudFront cache
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
-            --paths "/*"
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.25.1"
           cache-dependency-path: Server/MuchToDo/go.sum
 
-      - name: Build backend binary
+      - name: Run Go tests
         working-directory: ${{ env.BACKEND_DIR }}
         run: |
-          mkdir -p bin
           go mod download
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "bin/${BACKEND_BINARY_NAME}" ./cmd/api/main.go
+          go test ./...
 
-      - name: Upload backend binary to artifact bucket
+      - name: Run Go vet
+        working-directory: ${{ env.BACKEND_DIR }}
+        run: go vet ./...
+
+      - name: Run Go vulnerability check
+        working-directory: ${{ env.BACKEND_DIR }}
         run: |
-          aws s3 cp \
-            "${BACKEND_DIR}/bin/${BACKEND_BINARY_NAME}" \
-            "s3://${{ vars.DEPLOYMENT_ARTIFACTS_BUCKET_NAME }}/backend/${BACKEND_BINARY_NAME}"
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build backend Docker image
+        run: |
+          docker build \
+            -t "${{ vars.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}" \
+            "${{ env.BACKEND_DIR }}"
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ vars.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - name: Push backend Docker image to ECR
+        run: |
+          docker push "${{ vars.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}"
 
       - name: Find backend EC2 instances
         id: backend_instances
@@ -98,18 +92,19 @@ jobs:
 
           echo "instance_ids=${INSTANCE_IDS}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy backend through SSM
+      - name: Deploy Docker image to EC2 through SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids ${{ steps.backend_instances.outputs.instance_ids }} \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy MuchToDo backend binary" \
+            --comment "Deploy MuchToDo backend Docker image" \
             --parameters commands="[
               \"set -e\",
-              \"aws s3 cp s3://${{ vars.DEPLOYMENT_ARTIFACTS_BUCKET_NAME }}/backend/${BACKEND_BINARY_NAME} /usr/local/bin/${BACKEND_BINARY_NAME}\",
-              \"chmod +x /usr/local/bin/${BACKEND_BINARY_NAME}\",
-              \"systemctl restart muchtodo-backend\",
-              \"systemctl status muchtodo-backend --no-pager\"
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ vars.BACKEND_ECR_REPOSITORY_URL }}\",
+              \"docker pull ${{ vars.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}\",
+              \"docker rm -f muchtodo-backend || true\",
+              \"docker run -d --name muchtodo-backend --restart unless-stopped --env-file /opt/muchtodo/.env -p 8080:8080 ${{ vars.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}\",
+              \"docker ps\"
             ]" \
             --query "Command.CommandId" \
             --output text)
@@ -127,3 +122,12 @@ jobs:
               --query "Status" \
               --output text
           done
+
+      - name: Smoke test backend health endpoint
+        run: |
+          sleep 30
+          curl -f "${{ vars.BACKEND_API_URL }}/health"
+
+      - name: Deployment notification
+        run: |
+          echo "Backend Docker image deployed successfully."

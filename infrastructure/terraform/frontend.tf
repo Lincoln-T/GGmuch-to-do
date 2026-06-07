@@ -41,6 +41,7 @@ EOFUNC
 
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
+  price_class         = "PriceClass_100"
   comment             = "${local.name_prefix} frontend and backend distribution"
   default_root_object = "index.html"
 

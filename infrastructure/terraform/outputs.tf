@@ -50,3 +50,8 @@ output "deployment_artifacts_bucket_name" {
   description = "S3 bucket used for backend deployment artifacts"
   value       = aws_s3_bucket.deployment_artifacts.bucket
 }
+
+output "backend_ecr_repository_url" {
+  description = "ECR repository URL for backend Docker images"
+  value       = aws_ecr_repository.backend.repository_url
+}

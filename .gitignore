@@ -31,3 +31,8 @@ Server/MuchToDo/*.test
 Thumbs.db
 .vscode/
 .idea/
+
+# Terraform plan files
+**/tfplan
+**/tfplan.*
+*.tfplan
