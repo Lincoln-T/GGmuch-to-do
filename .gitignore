@@ -36,3 +36,4 @@ Thumbs.db
 **/tfplan
 **/tfplan.*
 *.tfplan
+frontend-build/
